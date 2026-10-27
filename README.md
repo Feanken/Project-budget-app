@@ -49,6 +49,7 @@ budget-app/
 ├── app.py                  # Rute Flask dan REST API
 ├── database.py             # Skema dan koneksi SQLite
 ├── backup_database.py      # Backup SQLite yang konsisten
+├── audit_database.py       # Pemeriksaan data lama tanpa mengubah database
 ├── requirements.txt        # Dependensi Python
 ├── index.html              # Pratinjau lokal
 ├── templates/dashboard.html
@@ -61,6 +62,6 @@ API mencakup `/api/auth/*`, `/api/categories`, `/api/accounts`, `/api/goals`, `/
 
 ## Prioritas pengembangan
 
-1. Tinjau dan rekonsiliasi data lama yang mungkin sudah tidak konsisten; siapkan backup dan uji pemulihan.
+1. Jalankan pemeriksaan data lama pada salinan backup, lalu tinjau hasilnya; uji pemulihan sebelum memperbaiki data.
 2. Tuntaskan HTTPS, cookie aman, pembatasan login dan pengujian di VM.
 3. Migrasikan nominal ke representasi rupiah bilangan bulat dan perluas validasi serta pengujian di browser.

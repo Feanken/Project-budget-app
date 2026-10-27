@@ -4,7 +4,7 @@ Panduan ini menyiapkan Gunicorn di `127.0.0.1:8000` di belakang Nginx. Contoh me
 
 ## 1. Pindahkan kode dan lindungi data
 
-Cadangkan database VM terlebih dahulu dengan metode backup SQLite yang konsisten. Jangan menimpa atau menghapus `smartbudget.db`, file `smartbudget.db-wal`/`smartbudget.db-shm` yang aktif, atau virtual environment ketika memindahkan kode. Salin file aplikasi yang diperbarui (`app.py`, `database.py`, `backup_database.py`, `requirements.txt`, `templates/`, `static/`, dan `deploy/`) ke direktori aplikasi yang ada. Jangan menyalin database dari komputer lokal ke VM jika database VM berisi data yang ingin dipertahankan.
+Cadangkan database VM terlebih dahulu dengan metode backup SQLite yang konsisten. Jangan menimpa atau menghapus `smartbudget.db`, file `smartbudget.db-wal`/`smartbudget.db-shm` yang aktif, atau virtual environment ketika memindahkan kode. Salin file aplikasi yang diperbarui (`app.py`, `database.py`, `backup_database.py`, `audit_database.py`, `requirements.txt`, `templates/`, `static/`, dan `deploy/`) ke direktori aplikasi yang ada. Jangan menyalin database dari komputer lokal ke VM jika database VM berisi data yang ingin dipertahankan.
 
 Pastikan folder aplikasi dan database dapat dibaca/ditulis oleh pengguna service, dan pengguna lain tidak memiliki akses yang tidak diperlukan. Jangan letakkan backup atau rahasia dalam `static/`, karena aset dalam folder itu dapat diunduh pengunjung. HTML, CSS, dan JavaScript yang dikirim ke browser dapat dilihat pengunjung.
 
@@ -117,3 +117,15 @@ Untuk memindahkan database lama ke folder terpisah, lakukan pada waktu pemelihar
 5. Pertahankan database lama sebagai cadangan sampai data baru diverifikasi. Database lama tidak akan menerima perubahan setelah pindah; kembali ke database lama nantinya dapat kehilangan data baru.
 
 Untuk pemulihan yang sebenarnya, gunakan langkah yang sama tetapi pilih file backup yang sudah diuji sebagai sumber dan **nama database tujuan baru yang belum ada**. Ubah `SMARTBUDGET_DB_PATH` hanya setelah file hasil pemulihan siap, lalu mulai service dan verifikasi data. Jangan menghapus database lama atau sidecar secara otomatis.
+
+## 8. Memeriksa data lama
+
+Jalankan pemeriksaan pada salinan backup yang sudah dibuat, bukan pada file yang disalin secara manual dari database aktif:
+
+```bash
+sudo /usr/bin/python3 /var/www/budget-app/audit_database.py --database /var/backups/budgetapp/NAMA-FILE-BACKUP.db
+```
+
+Ganti `NAMA-FILE-BACKUP.db` dengan nama yang dihasilkan skrip backup. Pemeriksaan ini membaca database tanpa mengubah data dan melaporkan ID serta jumlah temuan, termasuk saldo negatif, perbedaan goal dan transaksi terkait, setoran tanpa goal, nominal pecahan, serta kemungkinan transaksi duplikat. Output dapat berisi saldo dan ID pengguna; perlakukan sebagai data pribadi.
+
+Kemungkinan duplikat dikelompokkan berdasarkan pengguna, tipe, judul, nominal, kategori, rekening, dan tanggal yang sama. Hasil ini bisa merupakan transaksi yang sah. Setoran tanpa goal juga bisa merupakan transaksi impor atau riwayat goal yang telah dihapus. Jangan menghapus atau mengubah catatan secara otomatis berdasarkan laporan; lakukan peninjauan satu per satu dengan pemilik data dan backup yang siap dipulihkan. Pemeriksaan ini tidak menemukan semua jenis kesalahan. Kode keluar `0` berarti tidak ada temuan dari pemeriksaan ini, `2` berarti ada temuan untuk ditinjau, dan `1` berarti pemeriksaan gagal.

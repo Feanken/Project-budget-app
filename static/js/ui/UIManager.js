@@ -301,8 +301,14 @@ class UIManager {
       const storage = new StorageManager(user.userId);
       this.bm = new BudgetManager(storage);
       // Sync from Flask SQLite database
-      await this.bm.syncServer();
-      this.render();
+      try {
+        await this.bm.syncServer();
+        this.render();
+      } catch (err) {
+        this.elements.viewAuth.classList.remove('hidden');
+        this.elements.viewApp.classList.add('hidden');
+        this.showToast(err.message, 'danger');
+      }
     } else {
       this.elements.viewAuth.classList.remove('hidden');
       this.elements.viewApp.classList.add('hidden');
@@ -507,12 +513,12 @@ class UIManager {
 
     // On-the-fly Category & Account additions inside Transaction Modal
     if (this.elements.txCategorySelect) {
-      this.elements.txCategorySelect.addEventListener('change', (e) => {
+      this.elements.txCategorySelect.addEventListener('change', async (e) => {
         if (e.target.value === '__add_new__') {
           const newName = prompt('Masukkan nama kategori baru:');
           if (newName && newName.trim()) {
             try {
-              const added = this.bm.addCategory(newName);
+              const added = await this.bm.addCategory(newName);
               this.populateDropdowns();
               this.elements.txCategorySelect.value = added;
               this.showToast(`Kategori "${added}" ditambahkan!`, 'success');
@@ -528,12 +534,12 @@ class UIManager {
     }
 
     if (this.elements.txAccountSelect) {
-      this.elements.txAccountSelect.addEventListener('change', (e) => {
+      this.elements.txAccountSelect.addEventListener('change', async (e) => {
         if (e.target.value === '__add_new__') {
           const newName = prompt('Masukkan nama rekening / metode pembayaran baru (contoh: Bank BCA, GoPay):');
           if (newName && newName.trim()) {
             try {
-              const added = this.bm.addAccount(newName);
+              const added = await this.bm.addAccount(newName);
               this.populateDropdowns();
               this.elements.txAccountSelect.value = added;
               this.showToast(`Rekening/Metode "${added}" ditambahkan!`, 'success');
@@ -570,11 +576,11 @@ class UIManager {
 
     // 15. Settings: Add Category
     if (this.elements.formAddCategory) {
-      this.elements.formAddCategory.addEventListener('submit', (e) => {
+      this.elements.formAddCategory.addEventListener('submit', async (e) => {
         e.preventDefault();
         const name = this.elements.newCategoryInput.value.trim();
         try {
-          this.bm.addCategory(name);
+          await this.bm.addCategory(name);
           this.elements.formAddCategory.reset();
           this.showToast(`Kategori "${name}" berhasil ditambahkan!`, 'success');
           this.renderSettings();
@@ -587,11 +593,11 @@ class UIManager {
 
     // 16. Settings: Add Payment Account
     if (this.elements.formAddAccount) {
-      this.elements.formAddAccount.addEventListener('submit', (e) => {
+      this.elements.formAddAccount.addEventListener('submit', async (e) => {
         e.preventDefault();
         const name = this.elements.newAccountInput.value.trim();
         try {
-          this.bm.addAccount(name);
+          await this.bm.addAccount(name);
           this.elements.formAddAccount.reset();
           this.showToast(`Rekening/Metode "${name}" berhasil ditambahkan!`, 'success');
           this.renderSettings();
@@ -632,9 +638,9 @@ class UIManager {
         }
 
         const reader = new FileReader();
-        reader.onload = (event) => {
+        reader.onload = async (event) => {
           try {
-            const count = this.bm.importFromCSV(event.target.result);
+            const count = await this.bm.importFromCSV(event.target.result);
             this.showToast(`Berhasil mengimpor ${count} transaksi! 📤`, 'success');
             this.elements.formImportCSV.reset();
             this.render();
@@ -648,11 +654,13 @@ class UIManager {
 
     // 19. Settings: Reset User Data
     if (this.elements.btnResetUserData) {
-      this.elements.btnResetUserData.addEventListener('click', () => {
+      this.elements.btnResetUserData.addEventListener('click', async () => {
         if (confirm('PERINGATAN: Semua transaksi dan target impian di akun ini akan dihapus secara permanen. Lanjutkan?')) {
-          this.bm.resetAllData();
-          this.showToast('Semua data akun ini telah dibersihkan.', 'info');
-          this.render();
+          try {
+            await this.bm.resetAllData();
+            this.showToast('Semua data akun ini telah dibersihkan.', 'info');
+            this.render();
+          } catch (err) { this.showToast(err.message, 'danger'); }
         }
       });
     }
@@ -717,7 +725,7 @@ class UIManager {
   // FORM HANDLERS (GOAL & TRANSACTIONS)
   // ==========================================
 
-  handleCreateGoal(e) {
+  async handleCreateGoal(e) {
     e.preventDefault();
 
     const title = this.elements.goalTitleInput.value.trim();
@@ -736,7 +744,7 @@ class UIManager {
     }
 
     try {
-      this.bm.addGoal({
+      await this.bm.addGoal({
         title,
         targetAmount,
         currentAmount: initialAmount,
@@ -784,7 +792,7 @@ class UIManager {
     this.elements.modalDeposit.classList.add('hidden');
   }
 
-  handleDepositSubmit(e) {
+  async handleDepositSubmit(e) {
     e.preventDefault();
     const goalId = this.elements.depositGoalId.value;
     const amount = CurrencyInputMask.getRawNumber(this.elements.depositAmount);
@@ -796,7 +804,7 @@ class UIManager {
     }
 
     try {
-      const updated = this.bm.depositToGoal(goalId, amount, account);
+      const updated = await this.bm.depositToGoal(goalId, amount, account);
       this.elements.formDeposit.reset();
       this.closeDepositModal();
       this.showToast(`Berhasil menabung ${UIManager.formatCurrency(amount)} untuk "${updated.title}"! 💰`, 'success');
@@ -821,7 +829,7 @@ class UIManager {
     this.elements.modalTx.classList.add('hidden');
   }
 
-  handleTxSubmit(e) {
+  async handleTxSubmit(e) {
     e.preventDefault();
     const type = document.querySelector('input[name="tx-type"]:checked').value;
     const title = this.elements.txTitleInput.value.trim();
@@ -837,7 +845,7 @@ class UIManager {
     }
 
     try {
-      this.bm.addTransaction({ type, title, amount, category, account, date });
+      await this.bm.addTransaction({ type, title, amount, category, account, date });
       this.elements.formTx.reset();
       this.closeTxModal();
       this.showToast(`Transaksi "${title}" berhasil dicatat!`, 'success');
@@ -885,7 +893,7 @@ class UIManager {
     this.elements.modalEditTx.classList.add('hidden');
   }
 
-  handleEditTxSubmit(e) {
+  async handleEditTxSubmit(e) {
     e.preventDefault();
     const id = this.elements.editTxId.value;
     const type = document.querySelector('input[name="edit-tx-type"]:checked').value;
@@ -901,7 +909,7 @@ class UIManager {
     }
 
     try {
-      this.bm.updateTransaction(id, { type, title, amount, category, account, date });
+      await this.bm.updateTransaction(id, { type, title, amount, category, account, date });
       this.closeEditTxModal();
       this.showToast(`Transaksi "${title}" berhasil diperbarui! ✏️`, 'success');
       this.render();
@@ -1085,11 +1093,13 @@ class UIManager {
 
     const deleteBtn = card.querySelector('.btn-delete');
     if (deleteBtn) {
-      deleteBtn.addEventListener('click', () => {
+      deleteBtn.addEventListener('click', async () => {
         if (confirm(`Apakah Anda yakin ingin menghapus target "${goal.title}"?`)) {
-          this.bm.deleteGoal(goal.id);
-          this.showToast(`Target "${goal.title}" telah dihapus.`, 'info');
-          this.render();
+          try {
+            await this.bm.deleteGoal(goal.id);
+            this.showToast(`Target "${goal.title}" telah dihapus.`, 'info');
+            this.render();
+          } catch (err) { this.showToast(err.message, 'danger'); }
         }
       });
     }
@@ -1439,11 +1449,13 @@ class UIManager {
       `;
 
       item.querySelector('.btn-edit-tx').addEventListener('click', () => this.openEditTxModal(tx.id));
-      item.querySelector('.btn-del-tx').addEventListener('click', () => {
+      item.querySelector('.btn-del-tx').addEventListener('click', async () => {
         if (confirm(`Yakin ingin menghapus transaksi "${tx.title}"?`)) {
-          this.bm.deleteTransaction(tx.id);
-          this.showToast(`Transaksi "${tx.title}" telah dihapus.`, 'info');
-          this.render();
+          try {
+            await this.bm.deleteTransaction(tx.id);
+            this.showToast(`Transaksi "${tx.title}" telah dihapus.`, 'info');
+            this.render();
+          } catch (err) { this.showToast(err.message, 'danger'); }
         }
       });
 
@@ -1527,11 +1539,13 @@ class UIManager {
       `;
 
       tr.querySelector('.btn-edit-tx').addEventListener('click', () => this.openEditTxModal(tx.id));
-      tr.querySelector('.btn-del-tx').addEventListener('click', () => {
+      tr.querySelector('.btn-del-tx').addEventListener('click', async () => {
         if (confirm(`Yakin ingin menghapus transaksi "${tx.title}"?`)) {
-          this.bm.deleteTransaction(tx.id);
-          this.showToast(`Transaksi "${tx.title}" telah dihapus.`, 'info');
-          this.render();
+          try {
+            await this.bm.deleteTransaction(tx.id);
+            this.showToast(`Transaksi "${tx.title}" telah dihapus.`, 'info');
+            this.render();
+          } catch (err) { this.showToast(err.message, 'danger'); }
         }
       });
 
@@ -1572,10 +1586,10 @@ class UIManager {
           <span>🏷️ ${this.escapeHtml(cat)}</span>
           <button class="btn-item-del" title="Hapus Kategori">&times;</button>
         `;
-        item.querySelector('.btn-item-del').addEventListener('click', () => {
+        item.querySelector('.btn-item-del').addEventListener('click', async () => {
           if (confirm(`Hapus kategori "${cat}"?`)) {
             try {
-              this.bm.deleteCategory(cat);
+              await this.bm.deleteCategory(cat);
               this.showToast(`Kategori "${cat}" dihapus.`, 'info');
               this.renderSettings();
               this.populateDropdowns();
@@ -1598,10 +1612,10 @@ class UIManager {
           <span>💳 ${this.escapeHtml(acc)}</span>
           <button class="btn-item-del" title="Hapus Rekening">&times;</button>
         `;
-        item.querySelector('.btn-item-del').addEventListener('click', () => {
+        item.querySelector('.btn-item-del').addEventListener('click', async () => {
           if (confirm(`Hapus rekening/metode "${acc}"?`)) {
             try {
-              this.bm.deleteAccount(acc);
+              await this.bm.deleteAccount(acc);
               this.showToast(`Rekening/Metode "${acc}" dihapus.`, 'info');
               this.renderSettings();
               this.populateDropdowns();

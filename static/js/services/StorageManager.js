@@ -47,38 +47,36 @@ class StorageManager {
    */
   async syncFromServer() {
     if (!this.isHttpMode) return;
+    const [cats, accounts, goals, transactions] = await Promise.all(
+      ['/api/categories', '/api/accounts', '/api/goals', '/api/transactions'].map(path => this.request(path))
+    );
+    if (![cats, accounts, goals, transactions].every(Array.isArray)) throw new Error('Data server tidak valid.');
+    this.saveCategories(cats);
+    this.saveAccounts(accounts);
+    this.saveGoals(goals);
+    this.saveTransactions(transactions);
+  }
 
+  async request(path, method = 'GET', data) {
+    let response;
     try {
-      // 1. Fetch Categories
-      const resCat = await fetch('/api/categories');
-      if (resCat.ok) {
-        const cats = await resCat.json();
-        if (Array.isArray(cats)) this.saveCategories(cats);
-      }
-
-      // 2. Fetch Accounts
-      const resAcc = await fetch('/api/accounts');
-      if (resAcc.ok) {
-        const accs = await resAcc.json();
-        if (Array.isArray(accs)) this.saveAccounts(accs);
-      }
-
-      // 3. Fetch Goals
-      const resGoals = await fetch('/api/goals');
-      if (resGoals.ok) {
-        const goals = await resGoals.json();
-        if (Array.isArray(goals)) this.saveGoals(goals);
-      }
-
-      // 4. Fetch Transactions
-      const resTx = await fetch('/api/transactions');
-      if (resTx.ok) {
-        const txs = await resTx.json();
-        if (Array.isArray(txs)) this.saveTransactions(txs);
-      }
+      response = await fetch(path, { method, headers: data === undefined ? {} : { 'Content-Type': 'application/json' },
+        ...(data === undefined ? {} : { body: JSON.stringify(data) }) });
     } catch (e) {
-      console.warn('[StorageManager] Sinkronisasi server SQLite ditunda:', e.message);
+      const error = new Error('Server tidak dapat dihubungi. Muat ulang dan periksa data setelah koneksi kembali sebelum mencoba lagi.');
+      error.uncertain = method !== 'GET';
+      throw error;
     }
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(result.error || `Permintaan gagal (${response.status}).`);
+      if (response.status >= 500 && method !== 'GET') {
+        error.uncertain = true;
+        error.message += ' Muat ulang dan periksa data sebelum mencoba lagi.';
+      }
+      throw error;
+    }
+    return result;
   }
 
   // ==========================================

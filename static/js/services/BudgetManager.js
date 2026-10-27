@@ -43,7 +43,29 @@ class BudgetManager {
     this.init();
   }
 
+  async serverChange(path, method, data) {
+    if (this.needsRefresh) throw new Error('Muat ulang halaman sebelum melakukan perubahan lagi.');
+    if (this.saving) throw new Error('Perubahan lain masih diproses.');
+    this.saving = true;
+    try {
+      const result = await this.storage.request(path, method, data);
+      try {
+        await this.syncServer();
+      } catch (e) {
+        this.needsRefresh = true;
+        throw new Error('Perubahan tersimpan, tetapi pembaruan tampilan gagal. Muat ulang halaman sebelum melakukan perubahan lagi.');
+      }
+      return result;
+    } catch (e) {
+      if (e.uncertain) this.needsRefresh = true;
+      throw e;
+    } finally {
+      this.saving = false;
+    }
+  }
+
   async resetAllData() {
+    if (this.storage.isHttpMode) return this.serverChange('/api/user/reset', 'POST');
     this.goals = [];
     this.transactions = [];
     await this.storage.clearOnServer();
@@ -56,7 +78,7 @@ class BudgetManager {
     return this.categories;
   }
 
-  addCategory(name) {
+  async addCategory(name) {
     const clean = String(name || '').trim();
     if (!clean) {
       throw new Error('Nama kategori tidak boleh kosong!');
@@ -65,16 +87,21 @@ class BudgetManager {
     if (exists) {
       throw new Error(`Kategori "${clean}" sudah ada.`);
     }
+    if (this.storage.isHttpMode) {
+      await this.serverChange('/api/categories', 'POST', {name: clean});
+      return clean;
+    }
     this.categories.push(clean);
     this.storage.saveCategories(this.categories);
     this.storage.addCategoryOnServer(clean);
     return clean;
   }
 
-  deleteCategory(name) {
+  async deleteCategory(name) {
     if (this.categories.length <= 1) {
       throw new Error('Minimal harus ada 1 kategori dalam sistem.');
     }
+    if (this.storage.isHttpMode) return this.serverChange(`/api/categories/${encodeURIComponent(name)}`, 'DELETE');
     this.categories = this.categories.filter(c => c.toLowerCase() !== name.toLowerCase());
     this.storage.saveCategories(this.categories);
     this.storage.deleteCategoryOnServer(name);
@@ -87,7 +114,7 @@ class BudgetManager {
     return this.accounts;
   }
 
-  addAccount(name) {
+  async addAccount(name) {
     const clean = String(name || '').trim();
     if (!clean) {
       throw new Error('Nama rekening / metode pembayaran tidak boleh kosong!');
@@ -96,16 +123,21 @@ class BudgetManager {
     if (exists) {
       throw new Error(`Rekening/Metode "${clean}" sudah ada.`);
     }
+    if (this.storage.isHttpMode) {
+      await this.serverChange('/api/accounts', 'POST', {name: clean});
+      return clean;
+    }
     this.accounts.push(clean);
     this.storage.saveAccounts(this.accounts);
     this.storage.addAccountOnServer(clean);
     return clean;
   }
 
-  deleteAccount(name) {
+  async deleteAccount(name) {
     if (this.accounts.length <= 1) {
       throw new Error('Minimal harus ada 1 rekening / metode pembayaran dalam sistem.');
     }
+    if (this.storage.isHttpMode) return this.serverChange(`/api/accounts/${encodeURIComponent(name)}`, 'DELETE');
     this.accounts = this.accounts.filter(a => a.toLowerCase() !== name.toLowerCase());
     this.storage.saveAccounts(this.accounts);
     this.storage.deleteAccountOnServer(name);
@@ -115,7 +147,7 @@ class BudgetManager {
   // GOAL METHODS WITH BALANCE PROTECTION
   // ==========================================
 
-  addGoal({ title, targetAmount, currentAmount = 0, category = 'Tabungan', deadline = null }) {
+  async addGoal({ title, targetAmount, currentAmount = 0, category = 'Tabungan', deadline = null }) {
     const numTarget = Math.max(0, Number(targetAmount) || 0);
     const numInitial = Math.max(0, Number(currentAmount) || 0);
 
@@ -135,6 +167,11 @@ class BudgetManager {
       }
     }
 
+    if (this.storage.isHttpMode) {
+      const result = await this.serverChange('/api/goals', 'POST', {title, target_amount: numTarget,
+        current_amount: numInitial, category, deadline, account: this.accounts[0] || 'Tunai / Cash'});
+      return this.goals.find(g => g.id === String(result.id));
+    }
     const newGoal = new Goal({
       title,
       targetAmount: numTarget,
@@ -170,13 +207,14 @@ class BudgetManager {
     return newGoal;
   }
 
-  deleteGoal(goalId) {
+  async deleteGoal(goalId) {
+    if (this.storage.isHttpMode) return this.serverChange(`/api/goals/${encodeURIComponent(goalId)}`, 'DELETE');
     this.goals = this.goals.filter(g => g.id !== goalId);
     this.storage.saveGoals(this.goals);
     this.storage.deleteGoalOnServer(goalId);
   }
 
-  depositToGoal(goalId, amount, account = null) {
+  async depositToGoal(goalId, amount, account = null) {
     const goal = this.goals.find(g => g.id === goalId);
     if (!goal) {
       throw new Error('Target goal tidak ditemukan.');
@@ -202,6 +240,10 @@ class BudgetManager {
     }
 
     const selectedAccount = account || this.accounts[0] || 'Tunai / Cash';
+    if (this.storage.isHttpMode) {
+      await this.serverChange(`/api/goals/${encodeURIComponent(goalId)}/deposit`, 'POST', {amount: numAmount, account: selectedAccount});
+      return this.goals.find(g => g.id === goalId);
+    }
     goal.deposit(numAmount);
     this.storage.saveGoals(this.goals);
 
@@ -249,7 +291,7 @@ class BudgetManager {
   // TRANSACTION METHODS WITH BALANCE PROTECTION
   // ==========================================
 
-  addTransaction({ type, title, amount, category = 'Umum', account = null, goalId = null, date = null }) {
+  async addTransaction({ type, title, amount, category = 'Umum', account = null, goalId = null, date = null }) {
     const numAmount = Number(amount);
     if (isNaN(numAmount) || numAmount <= 0) {
       throw new Error('Nominal transaksi harus lebih besar dari 0!');
@@ -265,6 +307,10 @@ class BudgetManager {
     }
 
     const selectedAccount = account || this.accounts[0] || 'Tunai / Cash';
+    if (this.storage.isHttpMode) {
+      const result = await this.serverChange('/api/transactions', 'POST', {type, title, amount: numAmount, category, account: selectedAccount, date});
+      return this.transactions.find(t => t.id === String(result.id));
+    }
     const tx = new Transaction({
       type,
       title,
@@ -295,7 +341,7 @@ class BudgetManager {
     return this.transactions.find(t => t.id === id) || null;
   }
 
-  updateTransaction(id, updatedData) {
+  async updateTransaction(id, updatedData) {
     const tx = this.getTransactionById(id);
     if (!tx) {
       throw new Error('Transaksi tidak ditemukan.');
@@ -322,6 +368,10 @@ class BudgetManager {
       }
     }
 
+    if (this.storage.isHttpMode) {
+      await this.serverChange(`/api/transactions/${encodeURIComponent(id)}`, 'PUT', updatedData);
+      return this.getTransactionById(id);
+    }
     tx.update(updatedData);
     this.storage.saveTransactions(this.transactions);
 
@@ -338,7 +388,8 @@ class BudgetManager {
     return tx;
   }
 
-  deleteTransaction(id) {
+  async deleteTransaction(id) {
+    if (this.storage.isHttpMode) return this.serverChange(`/api/transactions/${encodeURIComponent(id)}`, 'DELETE');
     this.transactions = this.transactions.filter(t => t.id !== id);
     this.storage.saveTransactions(this.transactions);
     this.storage.deleteTransactionOnServer(id);
@@ -516,8 +567,8 @@ class BudgetManager {
     const headers = ['Tanggal', 'Waktu', 'Keterangan', 'Kategori', 'Rekening/Metode', 'Tipe', 'Nominal (Rp)'];
     const rows = this.transactions.map(t => {
       const d = new Date(t.date);
-      const dateStr = d.toISOString().split('T')[0];
-      const timeStr = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
       const cleanTitle = `"${(t.title || '').replace(/"/g, '""')}"`;
       const cleanCat = `"${(t.category || '').replace(/"/g, '""')}"`;
       const cleanAcc = `"${(t.account || '').replace(/"/g, '""')}"`;
@@ -528,9 +579,13 @@ class BudgetManager {
     return [headers.join(','), ...rows].join('\r\n');
   }
 
-  importFromCSV(csvText) {
+  async importFromCSV(csvText) {
     if (!csvText || typeof csvText !== 'string') {
       throw new Error('File CSV kosong atau tidak valid.');
+    }
+    if (this.storage.isHttpMode) {
+      const result = await this.serverChange('/api/transactions/import', 'POST', {csv: csvText});
+      return result.count;
     }
 
     const lines = csvText.split(/\r?\n/).filter(line => line.trim().length > 0);

@@ -5,6 +5,10 @@ Designed for high efficiency on 1 vCPU & 1 GiB RAM Ubuntu Server.
 
 import os
 import functools
+import math
+import csv
+import io
+from datetime import datetime
 from datetime import timedelta
 from flask import Flask, render_template, jsonify, request, session
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -79,6 +83,14 @@ def calculate_user_net_balance(db, user_id):
         WHERE user_id = ?;
     """, (user_id,)).fetchone()
     return float(row["total_income"] - row["total_expense"])
+
+
+def parse_amount(value):
+    try:
+        amount = float(value)
+        return amount if math.isfinite(amount) and 0 <= amount <= 1_000_000_000_000_000 else None
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 
 # ============================================================================
@@ -298,15 +310,19 @@ def handle_goals():
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
         title = str(data.get("title", "")).strip()
-        target_amount = float(data.get("target_amount") or 0)
-        initial_amount = float(data.get("current_amount") or 0)
+        target_amount = parse_amount(data.get("target_amount"))
+        initial_amount = parse_amount(data.get("current_amount", 0))
         category = str(data.get("category", "Tabungan"))
         deadline = data.get("deadline") or None
 
         if not title:
             return jsonify({"error": "Nama target goal tidak boleh kosong."}), 400
-        if target_amount <= 0:
+        if target_amount is None or target_amount <= 0:
             return jsonify({"error": "Target nominal harus lebih besar dari 0."}), 400
+        if initial_amount is None or initial_amount > target_amount:
+            return jsonify({"error": "Setoran awal harus antara 0 dan nilai target."}), 400
+
+        db.execute("BEGIN IMMEDIATE")
 
         # SERVER-SIDE NEGATIVE TEST CHECK: Available balance for initial deposit
         if initial_amount > 0:
@@ -359,13 +375,14 @@ def handle_goals():
 def deposit_to_goal(goal_id):
     user_id = get_current_user_id()
     data = request.get_json(silent=True) or {}
-    amount = float(data.get("amount") or 0)
+    amount = parse_amount(data.get("amount"))
     account = str(data.get("account", "Tunai / Cash"))
 
-    if amount <= 0:
+    if amount is None or amount <= 0:
         return jsonify({"error": "Nominal alokasi tabungan harus lebih dari 0."}), 400
 
     db = get_db()
+    db.execute("BEGIN IMMEDIATE")
     goal = db.execute("SELECT id, title, target_amount, current_amount FROM goals WHERE id = ? AND user_id = ?;", (goal_id, user_id)).fetchone()
     if not goal:
         return jsonify({"error": "Target goal tidak ditemukan."}), 404
@@ -424,16 +441,18 @@ def handle_transactions():
         data = request.get_json(silent=True) or {}
         tx_type = str(data.get("type", "expense")).lower()
         title = str(data.get("title", "")).strip()
-        amount = float(data.get("amount") or 0)
+        amount = parse_amount(data.get("amount"))
         category = str(data.get("category", "Umum"))
         account = str(data.get("account", "Tunai / Cash"))
         date = data.get("date")
 
-        if not title or amount <= 0:
+        if not title or amount is None or amount <= 0 or tx_type not in ('income', 'expense', 'goal_saving'):
             return jsonify({"error": "Judul dan nominal transaksi harus valid."}), 400
 
+        db.execute("BEGIN IMMEDIATE")
+
         # SERVER-SIDE NEGATIVE TEST CHECK: Expense against net balance
-        if tx_type == "expense":
+        if tx_type in ("expense", "goal_saving"):
             net_balance = calculate_user_net_balance(db, user_id)
             if amount > net_balance:
                 return jsonify({
@@ -469,17 +488,73 @@ def handle_transactions():
     return jsonify(tx_list), 200
 
 
+@app.route('/api/transactions/import', methods=['POST'])
+@login_required
+def import_transactions():
+    data = request.get_json(silent=True) or {}
+    content = data.get('csv')
+    if not isinstance(content, str) or len(content) > 1_000_000:
+        return jsonify({'error': 'CSV tidak valid atau terlalu besar (maksimal 1 MB).'}), 400
+    try:
+        rows = list(csv.reader(io.StringIO(content, newline=''), strict=True))
+        if len(rows) < 2 or len(rows) > 10001:
+            raise ValueError('CSV harus memiliki 1–10.000 baris transaksi.')
+        entries = []
+        for line, row in enumerate(rows[1:], start=2):
+            if not row or all(not field.strip() for field in row):
+                continue
+            if len(row) != 7:
+                raise ValueError(f'Baris {line} harus memiliki 7 kolom.')
+            date, time, title, category, account, label, value = (v.strip() for v in row)
+            amount = parse_amount(value)
+            types = {'pemasukan': 'income', 'income': 'income', 'pengeluaran': 'expense',
+                     'expense': 'expense', 'tabungan goal': 'goal_saving', 'goal_saving': 'goal_saving'}
+            kind = types.get(label.lower())
+            if not title or amount is None or amount <= 0 or not kind:
+                raise ValueError(f'Baris {line} memiliki judul, tipe, atau nominal tidak valid.')
+            try:
+                stamp = datetime.fromisoformat(date + ('T' + time if time else '')).isoformat()
+            except ValueError:
+                raise ValueError(f'Tanggal atau waktu pada baris {line} tidak valid.')
+            entries.append((stamp, line, title, category or 'Umum', account or 'Tunai / Cash', kind, amount))
+        if not entries:
+            raise ValueError('CSV tidak memiliki transaksi.')
+    except (csv.Error, ValueError) as exc:
+        return jsonify({'error': str(exc)}), 400
+
+    db = get_db()
+    user_id = get_current_user_id()
+    db.execute('BEGIN IMMEDIATE')
+    balance = calculate_user_net_balance(db, user_id)
+    for stamp, line, title, category, account, kind, amount in sorted(entries):
+        balance += amount if kind == 'income' else -amount
+        if balance < 0:
+            db.rollback()
+            return jsonify({'error': f'Impor dibatalkan: saldo tidak cukup pada baris {line}.'}), 400
+        db.execute('INSERT OR IGNORE INTO categories (user_id, name) VALUES (?, ?)', (user_id, category))
+        db.execute('INSERT OR IGNORE INTO accounts (user_id, name) VALUES (?, ?)', (user_id, account))
+        db.execute('INSERT INTO transactions (user_id, type, title, amount, category, account, date) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                   (user_id, kind, title, amount, category, account, stamp))
+    db.commit()
+    return jsonify({'count': len(entries)}), 201
+
+
 @app.route("/api/transactions/<int:tx_id>", methods=["PUT", "DELETE"])
 @login_required
 def modify_transaction(tx_id):
     user_id = get_current_user_id()
     db = get_db()
 
-    existing = db.execute("SELECT id, type, amount FROM transactions WHERE id = ? AND user_id = ?;", (tx_id, user_id)).fetchone()
+    db.execute("BEGIN IMMEDIATE")
+    existing = db.execute("SELECT id, type, amount, goal_id FROM transactions WHERE id = ? AND user_id = ?;", (tx_id, user_id)).fetchone()
     if not existing:
         return jsonify({"error": "Transaksi tidak ditemukan."}), 404
 
     if request.method == "DELETE":
+        if existing["type"] == "income" and calculate_user_net_balance(db, user_id) - existing["amount"] < 0:
+            return jsonify({"error": "Pemasukan tidak dapat dihapus karena saldo akan menjadi negatif."}), 400
+        if existing["goal_id"]:
+            db.execute("UPDATE goals SET current_amount = MAX(0, current_amount - ?) WHERE id = ? AND user_id = ?;", (existing["amount"], existing["goal_id"], user_id))
         db.execute("DELETE FROM transactions WHERE id = ? AND user_id = ?;", (tx_id, user_id))
         db.commit()
         return jsonify({"message": "Transaksi berhasil dihapus."}), 200
@@ -488,13 +563,15 @@ def modify_transaction(tx_id):
     data = request.get_json(silent=True) or {}
     tx_type = str(data.get("type", existing["type"])).lower()
     title = str(data.get("title", "")).strip()
-    amount = float(data.get("amount") or 0)
+    amount = parse_amount(data.get("amount"))
     category = str(data.get("category", "Umum"))
     account = str(data.get("account", "Tunai / Cash"))
     date = data.get("date")
 
-    if not title or amount <= 0:
+    if not title or amount is None or amount <= 0 or tx_type not in ('income', 'expense', 'goal_saving'):
         return jsonify({"error": "Judul dan nominal transaksi harus valid."}), 400
+    if existing["goal_id"]:
+        return jsonify({"error": "Transaksi setoran goal tidak dapat diubah. Hapus setoran lalu buat kembali jika diperlukan."}), 400
 
     # Check balance simulation
     net_bal = calculate_user_net_balance(db, user_id)
@@ -507,6 +584,8 @@ def modify_transaction(tx_id):
         return jsonify({
             "error": f"Gagal update: Saldo tidak mencukupi! Saldo yang tersedia Rp {net_bal:,.0f}, sedangkan pengeluaran baru Rp {amount:,.0f}."
         }), 400
+    if tx_type == 'income' and net_bal + amount < 0:
+        return jsonify({"error": "Perubahan akan membuat saldo negatif."}), 400
 
     db.execute("""
         UPDATE transactions

@@ -36,7 +36,9 @@ Buka `index.html` langsung di browser. Mode ini menggunakan `localStorage` brows
 
 Pada mode server, data utama disimpan di SQLite dan juga dicache di `localStorage`. Saldo dihitung dari total pemasukan dikurangi pengeluaran dan alokasi tabungan, bukan saldo terpisah untuk setiap rekening. Ekspor CSV berisi transaksi; ekspor tersebut bukan cadangan lengkap pengguna, kategori, rekening, dan target.
 
-**Penting:** sinkronisasi saat ini belum dapat diandalkan. Kegagalan permintaan server tidak selalu ditampilkan, ID objek baru di browser tidak langsung diganti dengan ID server, dan setoran target dapat tercatat ganda. Perubahan lokal atau hasil impor dapat berbeda dari data setelah halaman dimuat ulang. Perlindungan saldo juga belum mencakup semua operasi. Periksa dan perbaiki masalah ini sebelum mengandalkan aplikasi untuk pencatatan keuangan nyata.
+Dalam mode server, perubahan menunggu respons server dan data dimuat ulang setelah penyimpanan. Jika koneksi terputus saat menyimpan, periksa data setelah memuat ulang sebelum mencoba lagi. Impor CSV dilakukan secara keseluruhan: bila satu baris gagal validasi atau menyebabkan saldo negatif, tidak ada baris yang diimpor. Impor transaksi tabungan mencatat riwayat tanpa menghubungkannya ke target. Setoran target yang terhubung hanya dapat dihapus, bukan diedit; penghapusan target mempertahankan riwayat transaksi dan tidak otomatis mengembalikan saldo.
+
+Pembaruan ini tidak memperbaiki otomatis transaksi yang sebelumnya tercatat ganda atau data yang sudah tidak konsisten. Cadangkan database dan tinjau data lama sebelum menerapkannya. Nilai nominal masih disimpan sebagai angka pecahan SQLite (`REAL`); migrasi ke bilangan bulat perlu direncanakan dan diuji tersendiri.
 
 Untuk produksi, `SECRET_KEY` wajib disediakan melalui environment dan minimal 32 karakter. Buat kunci acak yang kuat pada server dan rahasiakan. Terapkan HTTPS, `SESSION_COOKIE_SECURE=true`, dan pembatasan login di Nginx sesuai [panduan VM](deploy/README.md); konfigurasi pada server tidak berubah otomatis saat kode diperbarui. Backup SQLite dan hak akses file juga perlu disiapkan.
 
@@ -58,7 +60,6 @@ API mencakup `/api/auth/*`, `/api/categories`, `/api/accounts`, `/api/goals`, `/
 
 ## Prioritas pengembangan
 
-1. Jadikan respons server sumber data utama, tangani kegagalan, gunakan ID dari server, dan pastikan setoran hanya dicatat sekali.
-2. Jaga konsistensi saldo dan target saat transaksi diubah atau dihapus; validasi seluruh input di server dan gunakan operasi database atomik.
-3. Perkuat keamanan autentikasi, sesi, dan deployment; tambahkan pengujian otomatis untuk alur keuangan dan isolasi pengguna.
-4. Perbaiki impor CSV dan sediakan backup serta pemulihan data lengkap sebelum menambah fitur baru.
+1. Tinjau dan rekonsiliasi data lama yang mungkin sudah tidak konsisten; siapkan backup dan uji pemulihan.
+2. Tuntaskan HTTPS, cookie aman, pembatasan login dan pengujian di VM.
+3. Migrasikan nominal ke representasi rupiah bilangan bulat dan perluas validasi serta pengujian di browser.

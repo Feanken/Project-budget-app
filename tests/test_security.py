@@ -42,6 +42,35 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["Cache-Control"], "no-store")
 
+    def test_cross_user_access_and_reset(self):
+        alice, bob, anonymous = app.test_client(), app.test_client(), app.test_client()
+        for client, username in ((alice, "isolation-alice"), (bob, "isolation-bob")):
+            data = {"username": username, "password": "safe-test-password", "confirm_password": "safe-test-password"}
+            self.assertEqual(client.post('/api/auth/register', json=data, headers=self.headers).status_code, 201)
+        def post(client, path, data):
+            return client.post(path, json=data, headers=self.headers)
+        tx = post(alice, '/api/transactions', {"type": "income", "title": "private-income", "amount": 100})
+        goal = post(alice, '/api/goals', {"title": "private-goal", "target_amount": 50})
+        self.assertEqual(tx.status_code, 201)
+        self.assertEqual(goal.status_code, 201)
+        tx_id, goal_id = tx.json['id'], goal.json['id']
+        self.assertEqual(post(alice, '/api/categories', {"name": "private-category"}).status_code, 201)
+        self.assertEqual(post(alice, '/api/accounts', {"name": "private-account"}).status_code, 201)
+        for path in ('/api/transactions', '/api/goals', '/api/categories', '/api/accounts'):
+            self.assertEqual(anonymous.get(path).status_code, 401)
+            self.assertNotIn('private-', str(bob.get(path).json))
+        self.assertEqual(bob.delete(f'/api/transactions/{tx_id}', headers=self.headers).status_code, 404)
+        self.assertEqual(bob.put(f'/api/transactions/{tx_id}', json={"title": "changed", "amount": 1}, headers=self.headers).status_code, 404)
+        self.assertEqual(bob.delete(f'/api/goals/{goal_id}', headers=self.headers).status_code, 404)
+        self.assertEqual(post(bob, f'/api/goals/{goal_id}/deposit', {"amount": 1}).status_code, 404)
+        self.assertEqual(bob.delete('/api/categories/private-category', headers=self.headers).status_code, 404)
+        self.assertEqual(bob.delete('/api/accounts/private-account', headers=self.headers).status_code, 404)
+        self.assertEqual(post(bob, '/api/user/reset', {}).status_code, 200)
+        self.assertEqual(alice.get('/api/transactions').json[0]['title'], 'private-income')
+        self.assertEqual(alice.get('/api/goals').json[0]['title'], 'private-goal')
+        self.assertIn('private-category', alice.get('/api/categories').json)
+        self.assertIn('private-account', alice.get('/api/accounts').json)
+
 
 if __name__ == "__main__":
     unittest.main()

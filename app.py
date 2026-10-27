@@ -238,8 +238,10 @@ def delete_category(name):
     if count_row["cnt"] <= 1:
         return jsonify({"error": "Minimal harus ada 1 kategori dalam sistem."}), 400
 
-    db.execute("DELETE FROM categories WHERE user_id = ? AND name = ? COLLATE NOCASE;", (user_id, name))
+    result = db.execute("DELETE FROM categories WHERE user_id = ? AND name = ? COLLATE NOCASE;", (user_id, name))
     db.commit()
+    if not result.rowcount:
+        return jsonify({"error": "Kategori tidak ditemukan."}), 404
     return jsonify({"message": f"Kategori '{name}' dihapus."}), 200
 
 
@@ -276,8 +278,10 @@ def delete_account(name):
     if count_row["cnt"] <= 1:
         return jsonify({"error": "Minimal harus ada 1 rekening dalam sistem."}), 400
 
-    db.execute("DELETE FROM accounts WHERE user_id = ? AND name = ? COLLATE NOCASE;", (user_id, name))
+    result = db.execute("DELETE FROM accounts WHERE user_id = ? AND name = ? COLLATE NOCASE;", (user_id, name))
     db.commit()
+    if not result.rowcount:
+        return jsonify({"error": "Rekening tidak ditemukan."}), 404
     return jsonify({"message": f"Rekening '{name}' dihapus."}), 200
 
 
@@ -381,7 +385,7 @@ def deposit_to_goal(goal_id):
         }), 400
 
     new_amount = goal["current_amount"] + amount
-    db.execute("UPDATE goals SET current_amount = ? WHERE id = ?;", (new_amount, goal_id))
+    db.execute("UPDATE goals SET current_amount = ? WHERE id = ? AND user_id = ?;", (new_amount, goal_id, user_id))
     db.execute("""
         INSERT INTO transactions (user_id, type, title, amount, category, account, goal_id)
         VALUES (?, 'goal_saving', ?, ?, 'Goal Saving', ?, ?);
@@ -399,8 +403,10 @@ def deposit_to_goal(goal_id):
 def delete_goal(goal_id):
     user_id = get_current_user_id()
     db = get_db()
-    db.execute("DELETE FROM goals WHERE id = ? AND user_id = ?;", (goal_id, user_id))
+    result = db.execute("DELETE FROM goals WHERE id = ? AND user_id = ?;", (goal_id, user_id))
     db.commit()
+    if not result.rowcount:
+        return jsonify({"error": "Target goal tidak ditemukan."}), 404
     return jsonify({"message": "Goal berhasil dihapus."}), 200
 
 
@@ -474,7 +480,7 @@ def modify_transaction(tx_id):
         return jsonify({"error": "Transaksi tidak ditemukan."}), 404
 
     if request.method == "DELETE":
-        db.execute("DELETE FROM transactions WHERE id = ?;", (tx_id,))
+        db.execute("DELETE FROM transactions WHERE id = ? AND user_id = ?;", (tx_id, user_id))
         db.commit()
         return jsonify({"message": "Transaksi berhasil dihapus."}), 200
 
@@ -505,8 +511,8 @@ def modify_transaction(tx_id):
     db.execute("""
         UPDATE transactions
         SET type = ?, title = ?, amount = ?, category = ?, account = ?, date = COALESCE(?, date)
-        WHERE id = ?;
-    """, (tx_type, title, amount, category, account, date, tx_id))
+        WHERE id = ? AND user_id = ?;
+    """, (tx_type, title, amount, category, account, date, tx_id, user_id))
     db.commit()
 
     return jsonify({"message": "Transaksi berhasil diperbarui!"}), 200

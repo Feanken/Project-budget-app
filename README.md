@@ -54,7 +54,7 @@ budget-app/
 └── deploy/                 # Contoh konfigurasi server Linux
 ```
 
-API mencakup `/api/auth/*`, `/api/categories`, `/api/accounts`, `/api/goals`, `/api/transactions`, `/api/user/reset`, dan `/api/health`. Endpoint data membutuhkan sesi login. Health endpoint mengembalikan status statis, sehingga bukan pemeriksaan menyeluruh atas kondisi database.
+API mencakup `/api/auth/*`, `/api/categories`, `/api/accounts`, `/api/goals`, `/api/transactions`, `/api/user/reset`, dan `/api/health`. Endpoint data membutuhkan sesi login dan membatasi data berdasarkan akun. Tes isolasi menggunakan dua akun dapat dijalankan dengan `python -m unittest discover -s tests -v` setelah dependensi dipasang; tes memakai database sementara, bukan database aplikasi. Health endpoint mengembalikan status statis, sehingga bukan pemeriksaan menyeluruh atas kondisi database.
 
 ## Prioritas pengembangan
 

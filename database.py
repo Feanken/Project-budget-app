@@ -12,7 +12,7 @@ try:
 except ImportError:
     g = None
 
-DATABASE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "smartbudget.db")
+DATABASE_PATH = os.environ.get("SMARTBUDGET_DB_PATH") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "smartbudget.db")
 
 
 def get_db():
@@ -42,6 +42,8 @@ def close_db(e=None):
 
 def init_db():
     """Initialize database tables schema."""
+    if os.environ.get("SMARTBUDGET_DB_PATH") and not os.path.isfile(DATABASE_PATH):
+        raise RuntimeError("Database pada SMARTBUDGET_DB_PATH tidak ditemukan; periksa lokasi sebelum menjalankan aplikasi.")
     conn = sqlite3.connect(DATABASE_PATH)
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.execute("PRAGMA journal_mode = WAL;")

@@ -4,7 +4,7 @@ Panduan ini menyiapkan Gunicorn di `127.0.0.1:8000` di belakang Nginx. Contoh me
 
 ## 1. Pindahkan kode dan lindungi data
 
-Cadangkan database VM terlebih dahulu dengan metode backup SQLite yang konsisten. Jangan menimpa atau menghapus `smartbudget.db`, file `smartbudget.db-wal`/`smartbudget.db-shm` yang aktif, atau virtual environment ketika memindahkan kode. Salin file aplikasi yang diperbarui (`app.py`, `database.py`, `requirements.txt`, `templates/`, `static/`, dan `deploy/`) ke direktori aplikasi yang ada. Jangan menyalin database dari komputer lokal ke VM jika database VM berisi data yang ingin dipertahankan.
+Cadangkan database VM terlebih dahulu dengan metode backup SQLite yang konsisten. Jangan menimpa atau menghapus `smartbudget.db`, file `smartbudget.db-wal`/`smartbudget.db-shm` yang aktif, atau virtual environment ketika memindahkan kode. Salin file aplikasi yang diperbarui (`app.py`, `database.py`, `backup_database.py`, `requirements.txt`, `templates/`, `static/`, dan `deploy/`) ke direktori aplikasi yang ada. Jangan menyalin database dari komputer lokal ke VM jika database VM berisi data yang ingin dipertahankan.
 
 Pastikan folder aplikasi dan database dapat dibaca/ditulis oleh pengguna service, dan pengguna lain tidak memiliki akses yang tidak diperlukan. Jangan letakkan backup atau rahasia dalam `static/`, karena aset dalam folder itu dapat diunduh pengunjung. HTML, CSS, dan JavaScript yang dikirim ke browser dapat dilihat pengunjung.
 
@@ -50,7 +50,7 @@ Jika service gagal, periksa `sudo journalctl -u budgetapp -n 50 --no-pager`. Kun
 
 `deploy/nginx.conf` adalah contoh untuk domain dan lokasi di atas. Sesuaikan `server_name` serta jalur static, lalu uji konfigurasi dengan `sudo nginx -t` sebelum mengaktifkan atau memuat ulang Nginx. Jangan menyajikan seluruh direktori proyek sebagai direktori file publik. Pastikan port Gunicorn tidak dibuka langsung ke internet dan periksa bahwa URL seperti `/app.py`, `/database.py`, `/smartbudget.db`, dan `/.env` tidak mengembalikan isi file.
 
-Contoh konfigurasi ini hanya menyediakan HTTP. **Sebelum digunakan untuk akun atau data nyata**, pasang HTTPS, arahkan HTTP ke HTTPS, dan lanjutkan tahap keamanan sesi, CSRF, dan pembatasan login. Tahap ini belum memperbaiki masalah sinkronisasi dan konsistensi saldo yang dijelaskan di README utama.
+Contoh konfigurasi ini hanya menyediakan HTTP. **Sebelum digunakan untuk akun atau data nyata**, pasang HTTPS, arahkan HTTP ke HTTPS, dan terapkan keamanan sesi serta pembatasan login. Tinjau juga data lama yang mungkin sudah tidak konsisten, seperti dijelaskan di README utama.
 
 ## 5. Penerapan keamanan sesi dan login
 
@@ -63,3 +63,57 @@ Aktifkan pembatasan di konfigurasi Nginx aktif: di dalam blok `http` tambahkan `
 Permintaan API yang mengubah data wajib menyertakan header `X-Requested-With: XMLHttpRequest`; halaman aplikasi menyertakannya otomatis. Perlindungan ini bergantung pada kebijakan same-origin browser dan tidak mengizinkan CORS lintas origin; jangan mengaktifkan CORS sembarangan. Klien API eksternal harus menyertakan header tersebut. Logout menghapus cookie browser, tetapi sesi Flask berbasis cookie yang sudah disalin tidak bisa dicabut satu per satu dan tetap berlaku sampai kedaluwarsa; pencabutan sesi di server adalah pengembangan berikutnya.
 
 `setup_server.sh` adalah skrip provisioning lama yang mengubah konfigurasi sistem, swap, dan Nginx; baca serta sesuaikan isinya sebelum menjalankannya. Panduan manual di atas lebih sesuai untuk memperbarui VM yang sudah ada.
+
+## 6. Backup database
+
+Setelah kode terbaru dipindahkan ke VM, buat folder yang hanya dapat diakses administrator dan jalankan backup manual. Contoh ini memakai lokasi database lama; jika Anda telah mengubah `SMARTBUDGET_DB_PATH`, ganti `--source` dengan lokasi aktif. Backup berisi data semua pengguna dan password hash, sehingga harus dilindungi seperti database asli.
+
+```bash
+sudo install -d -m 700 /var/backups/budgetapp
+sudo /usr/bin/python3 /var/www/budget-app/backup_database.py \
+  --source /var/www/budget-app/smartbudget.db \
+  --directory /var/backups/budgetapp
+```
+
+Skrip menggunakan SQLite Online Backup API dan memeriksa `integrity_check`; nama file berisi waktu UTC dan file yang sudah ada tidak akan ditimpa. Jangan memakai `cp` pada hanya file `.db` yang sedang aktif karena data terbaru mungkin berada dalam WAL. Simpan salinan terenkripsi di lokasi terpisah dari VM dan uji pemulihan; backup pada VM yang sama tidak melindungi dari kehilangan VM.
+
+### Jadwal harian opsional
+
+Service dan timer yang disediakan adalah contoh dan tidak otomatis aktif. Timer berjalan pukul 02.00 **waktu sistem VM** dan akan mengejar jadwal yang terlewat saat timer aktif lagi. Periksa waktu VM dan sesuaikan `OnCalendar` bila perlu. Buat `/etc/budgetapp/backup.env` sebagai root dengan isi berikut, sesuaikan lokasi database aktif dan folder backup:
+
+```text
+SMARTBUDGET_BACKUP_SOURCE=/var/www/budget-app/smartbudget.db
+SMARTBUDGET_BACKUP_DIR=/var/backups/budgetapp
+```
+
+Jaga file tersebut tetap dimiliki root, lalu pasang dan uji:
+
+```bash
+sudo chmod 600 /etc/budgetapp/backup.env
+sudo cp /var/www/budget-app/deploy/budgetapp-backup.service /etc/systemd/system/
+sudo cp /var/www/budget-app/deploy/budgetapp-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl start budgetapp-backup.service
+sudo systemctl status budgetapp-backup.service --no-pager
+sudo journalctl -u budgetapp-backup.service -n 20 --no-pager
+sudo systemctl enable --now budgetapp-backup.timer
+sudo systemctl list-timers budgetapp-backup.timer
+```
+
+Periksa backup yang dibuat, ruang disk, dan log secara berkala. Contoh ini tidak mengirim backup ke luar VM, mengenkripsi, menghapus backup lama, atau memberi notifikasi kegagalan; siapkan penyimpanan terpisah, retensi, dan pemantauan sesuai kebutuhan.
+
+## 7. Uji pemulihan dan lokasi database terpisah
+
+Sebelum pemulihan produksi, uji salinan backup pada lingkungan terpisah dan pastikan data yang dibutuhkan tersedia. `integrity_check` memeriksa struktur database; itu tidak memastikan isi data benar atau paling baru. Pemulihan berarti data sejak waktu backup bisa hilang, jadi hentikan service dan simpan backup database terkini terlebih dahulu. Jangan menimpa database aktif atau menyalin file WAL secara terpisah.
+
+Lokasi database dapat ditentukan dengan `SMARTBUDGET_DB_PATH` di `/etc/budgetapp/budgetapp.env`. Jika variabel tidak ada, aplikasi tetap menggunakan `/var/www/budget-app/smartbudget.db`. Bila variabel diatur, file tujuan **harus sudah ada**; aplikasi akan gagal mulai jika path salah, agar tidak diam-diam membuat database kosong.
+
+Untuk memindahkan database lama ke folder terpisah, lakukan pada waktu pemeliharaan:
+
+1. Hentikan service: `sudo systemctl stop budgetapp`. Pastikan tidak ada proses aplikasi lain yang menulis database.
+2. Buat direktori untuk pengguna service Anda, misalnya `sudo install -d -m 750 -o www-data -g www-data /var/lib/budgetapp`.
+3. Dengan service berhenti, gunakan `backup_database.py --source /var/www/budget-app/smartbudget.db --output /var/lib/budgetapp/smartbudget.db` sebagai root. Skrip menolak menimpa file tujuan yang sudah ada. Lalu atur pemilik file baru sesuai pengguna service, misalnya `sudo chown www-data:www-data /var/lib/budgetapp/smartbudget.db`.
+4. Tambahkan `SMARTBUDGET_DB_PATH=/var/lib/budgetapp/smartbudget.db` ke file environment service tanpa mengubah kunci yang sudah ada. Mulai kembali service dan periksa status serta data melalui aplikasi. Perbarui juga `SMARTBUDGET_BACKUP_SOURCE` pada backup timer jika digunakan.
+5. Pertahankan database lama sebagai cadangan sampai data baru diverifikasi. Database lama tidak akan menerima perubahan setelah pindah; kembali ke database lama nantinya dapat kehilangan data baru.
+
+Untuk pemulihan yang sebenarnya, gunakan langkah yang sama tetapi pilih file backup yang sudah diuji sebagai sumber dan **nama database tujuan baru yang belum ada**. Ubah `SMARTBUDGET_DB_PATH` hanya setelah file hasil pemulihan siap, lalu mulai service dan verifikasi data. Jangan menghapus database lama atau sidecar secara otomatis.

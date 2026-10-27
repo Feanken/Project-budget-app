@@ -1,0 +1,10 @@
+[Unit]
+Description=Schedule daily SmartBudget database backup
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+Unit=budgetapp-backup.service
+
+[Install]
+WantedBy=timers.target

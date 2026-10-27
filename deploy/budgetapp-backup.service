@@ -1,0 +1,8 @@
+[Unit]
+Description=Create a consistent SmartBudget SQLite backup
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/etc/budgetapp/backup.env
+ExecStart=/usr/bin/python3 /var/www/budget-app/backup_database.py --source ${SMARTBUDGET_BACKUP_SOURCE} --directory ${SMARTBUDGET_BACKUP_DIR}

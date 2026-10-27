@@ -48,6 +48,7 @@ Untuk produksi, `SECRET_KEY` wajib disediakan melalui environment dan minimal 32
 budget-app/
 ├── app.py                  # Rute Flask dan REST API
 ├── database.py             # Skema dan koneksi SQLite
+├── backup_database.py      # Backup SQLite yang konsisten
 ├── requirements.txt        # Dependensi Python
 ├── index.html              # Pratinjau lokal
 ├── templates/dashboard.html

@@ -38,7 +38,7 @@ Pada mode server, data utama disimpan di SQLite dan juga dicache di `localStorag
 
 **Penting:** sinkronisasi saat ini belum dapat diandalkan. Kegagalan permintaan server tidak selalu ditampilkan, ID objek baru di browser tidak langsung diganti dengan ID server, dan setoran target dapat tercatat ganda. Perubahan lokal atau hasil impor dapat berbeda dari data setelah halaman dimuat ulang. Perlindungan saldo juga belum mencakup semua operasi. Periksa dan perbaiki masalah ini sebelum mengandalkan aplikasi untuk pencatatan keuangan nyata.
 
-Untuk produksi, `SECRET_KEY` wajib disediakan melalui environment dan minimal 32 karakter. Buat kunci acak yang kuat pada server dan rahasiakan. Konfigurasi deployment perlu ditinjau, termasuk HTTPS, cookie aman, perlindungan CSRF, pembatasan percobaan login, backup SQLite, dan hak akses file. Panduan yang ada di [deploy/README.md](deploy/README.md) menjelaskan langkah VM dan perlu disesuaikan dengan lingkungan Anda.
+Untuk produksi, `SECRET_KEY` wajib disediakan melalui environment dan minimal 32 karakter. Buat kunci acak yang kuat pada server dan rahasiakan. Terapkan HTTPS, `SESSION_COOKIE_SECURE=true`, dan pembatasan login di Nginx sesuai [panduan VM](deploy/README.md); konfigurasi pada server tidak berubah otomatis saat kode diperbarui. Backup SQLite dan hak akses file juga perlu disiapkan.
 
 ## Struktur proyek
 

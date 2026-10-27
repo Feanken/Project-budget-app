@@ -287,7 +287,7 @@ class UIManager {
   // ==========================================
 
   async checkAuthStatus() {
-    const user = this.auth.getCurrentUser();
+    const user = await this.auth.verifyCurrentUser();
     if (user) {
       this.elements.viewAuth.classList.add('hidden');
       this.elements.viewApp.classList.remove('hidden');

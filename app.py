@@ -5,6 +5,7 @@ Designed for high efficiency on 1 vCPU & 1 GiB RAM Ubuntu Server.
 
 import os
 import functools
+from datetime import timedelta
 from flask import Flask, render_template, jsonify, request, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from database import get_db, close_db, init_db, seed_default_user_options
@@ -22,6 +23,25 @@ if len(secret_key) < 32:
 app.config["SECRET_KEY"] = secret_key
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
+app.config["SESSION_REFRESH_EACH_REQUEST"] = False
+
+@app.before_request
+def require_api_request_header():
+    # Custom headers require a same-origin request or an authorized CORS preflight.
+    if request.path.startswith("/api/") and request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+            return jsonify({"error": "Permintaan ditolak."}), 403
+
+@app.after_request
+def security_headers(response):
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    if request.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 # Register database teardown callback
 app.teardown_appcontext(close_db)
@@ -95,8 +115,8 @@ def auth_register():
 
     if not username or len(username) < 3:
         return jsonify({"error": "ID Pengguna minimal terdiri dari 3 karakter."}), 400
-    if not password or len(password) < 4:
-        return jsonify({"error": "Kata sandi minimal terdiri dari 4 karakter."}), 400
+    if len(password) < 12 or len(password) > 128:
+        return jsonify({"error": "Kata sandi harus terdiri dari 12 sampai 128 karakter."}), 400
     if password != confirm_password:
         return jsonify({"error": "Konfirmasi kata sandi tidak cocok."}), 400
 
@@ -118,6 +138,7 @@ def auth_register():
 
     # Establish session
     session.clear()
+    session.permanent = True
     session["user_id"] = user_id
     session["username"] = username
 
@@ -143,6 +164,7 @@ def auth_login():
         return jsonify({"error": "ID Pengguna atau kata sandi yang Anda masukkan salah."}), 401
 
     session.clear()
+    session.permanent = True
     session["user_id"] = user["id"]
     session["username"] = user["username"]
 

@@ -28,8 +28,8 @@ class AuthManager {
     if (!cleanId || cleanId.length < 3) {
       throw new Error('ID Pengguna minimal terdiri dari 3 karakter.');
     }
-    if (!pass || pass.length < 4) {
-      throw new Error('Kata sandi minimal 4 karakter.');
+    if (pass.length < 12 || pass.length > 128) {
+      throw new Error('Kata sandi harus terdiri dari 12 sampai 128 karakter.');
     }
     if (pass !== confirm) {
       throw new Error('Konfirmasi kata sandi tidak cocok!');
@@ -121,6 +121,24 @@ class AuthManager {
     try {
       const session = localStorage.getItem(this.sessionStorageKey);
       return session ? JSON.parse(session) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async verifyCurrentUser() {
+    if (!this.isHttpMode) return this.getCurrentUser();
+    try {
+      const res = await fetch('/api/auth/me', { cache: 'no-store' });
+      if (!res.ok) throw new Error('Sesi tidak dapat diperiksa.');
+      const data = await res.json();
+      if (!data.user) {
+        localStorage.removeItem(this.sessionStorageKey);
+        return null;
+      }
+      const user = { userId: data.user.username, id: data.user.id };
+      localStorage.setItem(this.sessionStorageKey, JSON.stringify(user));
+      return user;
     } catch (e) {
       return null;
     }

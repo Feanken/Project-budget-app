@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SmartBudget & Goal Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Chart.js CDN for Date-by-date Escalation Graphs -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body>
+
+  <!-- ================================================================= -->
+  <!-- AUTHENTICATION SCREEN: LOGIN & REGISTER                           -->
+  <!-- ================================================================= -->
+  <div id="view-auth" class="auth-wrapper">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="auth-icon">💰</div>
+        <h2 class="auth-title">SmartBudget</h2>
+        <p class="auth-desc">Masuk atau daftar untuk mengakses pencatatan keuangan pribadi Anda</p>
+      </div>
+
+      <div class="auth-tabs">
+        <button type="button" class="auth-tab-btn active" id="auth-tab-login">Masuk (Login)</button>
+        <button type="button" class="auth-tab-btn" id="auth-tab-register">Daftar Akun (Register)</button>
+      </div>
+
+      <!-- Form 1: Login -->
+      <form id="form-login" class="form-layout">
+        <div class="form-group">
+          <label for="login-userid" class="form-label">ID Pengguna / Username *</label>
+          <input type="text" id="login-userid" class="form-control" placeholder="Contoh: user1, fransisco" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label for="login-password" class="form-label">Kata Sandi *</label>
+          <input type="password" id="login-password" class="form-control" placeholder="••••••••" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" style="margin-top: 0.5rem;">
+          <span>🔑</span> Masuk ke Aplikasi
+        </button>
+      </form>
+
+      <!-- Form 2: Register -->
+      <form id="form-register" class="form-layout hidden">
+        <div class="form-group">
+          <label for="reg-userid" class="form-label">Buat ID Pengguna / Username *</label>
+          <input type="text" id="reg-userid" class="form-control" placeholder="Contoh: user2, bendahara" required minlength="3">
+        </div>
+        <div class="form-group">
+          <label for="reg-password" class="form-label">Kata Sandi *</label>
+          <input type="password" id="reg-password" class="form-control" placeholder="Minimal 4 karakter" required minlength="4">
+        </div>
+        <div class="form-group">
+          <label for="reg-confirm-password" class="form-label">Konfirmasi Kata Sandi *</label>
+          <input type="password" id="reg-confirm-password" class="form-control" placeholder="Ulangi kata sandi" required minlength="4">
+        </div>
+        <button type="submit" class="btn btn-success btn-block" style="margin-top: 0.5rem;">
+          <span>✨</span> Daftarkan Akun Baru
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- MAIN APP CONTAINER (SHOWN WHEN LOGGED IN)                        -->
+  <!-- ================================================================= -->
+  <div id="view-app" class="hidden">
+    
+    <!-- Top Navigation Bar -->
+    <header class="navbar" id="app-navbar">
+      <div class="nav-container">
+        <div class="brand">
+          <div class="brand-icon">💰</div>
+          <div>
+            <h1 class="brand-title">SmartBudget</h1>
+            <p class="brand-subtitle">MVP Budgeting, Goals & Ledger</p>
+          </div>
+        </div>
+
+        <!-- Navigation Switcher Tabs -->
+        <nav class="nav-tabs-group">
+          <button class="nav-tab-btn active" id="nav-tab-dashboard">
+            <span>🎯</span> Dashboard & Target
+          </button>
+          <button class="nav-tab-btn" id="nav-tab-transactions">
+            <span>📊</span> Buku Transaksi & Surplus
+          </button>
+          <button class="nav-tab-btn" id="nav-tab-settings">
+            <span>⚙️</span> Pengaturan & Kategori
+          </button>
+        </nav>
+
+        <div class="nav-actions">
+          <div class="user-profile-badge" id="nav-user-badge" title="Akun yang sedang aktif">
+            <span>👤</span>
+            <span id="nav-username-label">User</span>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="btn-open-tx-modal">
+            <span>➕</span> Catat
+          </button>
+          <button class="btn btn-danger-outline btn-sm" id="btn-logout" title="Keluar dari akun ini">
+            <span>🚪</span> Keluar
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="main-container">
+      
+      <!-- =============================================================== -->
+      <!-- VIEW 1: DASHBOARD & TARGET GOALS                                -->
+      <!-- =============================================================== -->
+      <div id="view-dashboard" class="view-section">
+        <!-- Financial Overview Metric Cards -->
+        <section class="metrics-grid">
+          <div class="card metric-card metric-balance">
+            <div class="metric-header">
+              <span class="metric-label">Total Saldo Bersih</span>
+              <span class="metric-icon">💳</span>
+            </div>
+            <div class="metric-value" id="val-balance">Rp 0</div>
+            <div class="metric-footnote">Pemasukan dikurangi pengeluaran</div>
+          </div>
+
+          <div class="card metric-card metric-income">
+            <div class="metric-header">
+              <span class="metric-label">Total Pemasukan</span>
+              <span class="metric-icon">📈</span>
+            </div>
+            <div class="metric-value" id="val-income">Rp 0</div>
+            <div class="metric-footnote">Akumulasi pendapatan</div>
+          </div>
+
+          <div class="card metric-card metric-expense">
+            <div class="metric-header">
+              <span class="metric-label">Total Pengeluaran</span>
+              <span class="metric-icon">📉</span>
+            </div>
+            <div class="metric-value" id="val-expense">Rp 0</div>
+            <div class="metric-footnote">Termasuk alokasi tabungan</div>
+          </div>
+
+          <div class="card metric-card metric-goals">
+            <div class="metric-header">
+              <span class="metric-label">Total Tabungan Goal</span>
+              <span class="metric-icon">🎯</span>
+            </div>
+            <div class="metric-value" id="val-goals-collected">Rp 0</div>
+            <div class="metric-footnote">
+              Target: <strong id="val-goals-target">Rp 0</strong> (<span id="val-goals-pct">0%</span>)
+            </div>
+          </div>
+        </section>
+
+        <!-- Two Columns: Form Tambah Goal & Daftar Goals -->
+        <div class="dashboard-grid">
+          
+          <!-- Left Column: Form Tambah Goal -->
+          <section class="dashboard-col form-col">
+            <div class="card form-card">
+              <div class="card-header">
+                <h2 class="card-title">🎯 Tambah Target Baru</h2>
+                <p class="card-desc">Tentukan impian finansial dan alokasikan tabungan Anda</p>
+              </div>
+
+              <form id="form-create-goal" class="form-layout">
+                <div class="form-group">
+                  <label for="goal-title" class="form-label">Nama Target / Impian *</label>
+                  <input type="text" id="goal-title" class="form-control" placeholder="Contoh: Dana Darurat, Beli Laptop" required maxlength="60">
+                </div>
+
+                <div class="form-row">
+                  <div class="form-group col-6">
+                    <label for="goal-target" class="form-label">Target Nominal *</label>
+                    <div class="input-currency-group">
+                      <span class="currency-prefix">Rp</span>
+                      <input type="text" id="goal-target" class="form-control" placeholder="10.000.000" required>
+                    </div>
+                  </div>
+                  <div class="form-group col-6">
+                    <label for="goal-initial" class="form-label">Saldo Awal (Opsional)</label>
+                    <div class="input-currency-group">
+                      <span class="currency-prefix">Rp</span>
+                      <input type="text" id="goal-initial" class="form-control" placeholder="0">
+                    </div>
+                  </div>
+                </div>
+
+                <div class="form-row">
+                  <div class="form-group col-6">
+                    <label for="goal-category" class="form-label">Kategori</label>
+                    <select id="goal-category" class="form-control">
+                      <!-- Populated dynamically -->
+                    </select>
+                  </div>
+
+                  <div class="form-group col-6">
+                    <label for="goal-deadline" class="form-label">Target Tercapai (Deadline)</label>
+                    <input type="date" id="goal-deadline" class="form-control">
+                  </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block">
+                  <span>➕</span> Simpan Target Goal
+                </button>
+              </form>
+            </div>
+
+            <!-- Quick Balance / Transaction Info Card -->
+            <div class="card recent-tx-card">
+              <div class="card-header card-header-flex">
+                <h3 class="card-title text-sm">📝 Aktivitas Transaksi Terbaru</h3>
+                <span class="badge" id="tx-count-badge">0 Transaksi</span>
+              </div>
+              <div id="tx-list-container" class="tx-list">
+                <!-- Rendered by OOP UIManager -->
+              </div>
+            </div>
+          </section>
+
+          <!-- Right Column: Daftar Goals & Progress Indicators -->
+          <section class="dashboard-col list-col">
+            <div class="card goals-container-card">
+              <div class="card-header card-header-flex">
+                <div>
+                  <h2 class="card-title">🏆 Daftar Target & Progres</h2>
+                  <p class="card-desc">Pantau perkembangan impian finansial Anda secara real-time</p>
+                </div>
+                <!-- Filter Tabs -->
+                <div class="filter-tabs">
+                  <button class="filter-btn active" data-filter="all">Semua</button>
+                  <button class="filter-btn" data-filter="active">Berjalan</button>
+                  <button class="filter-btn" data-filter="completed">Tercapai</button>
+                </div>
+              </div>
+
+              <!-- Overall Progress Bar Container -->
+              <div class="overall-progress-box">
+                <div class="overall-info">
+                  <span>Progres Keseluruhan Target</span>
+                  <strong id="overall-pct-label">0%</strong>
+                </div>
+                <div class="progress-track progress-track-lg">
+                  <div id="overall-progress-bar" class="progress-fill progress-fill-gradient" style="width: 0%;"></div>
+                </div>
+              </div>
+
+              <!-- Goal Cards List -->
+              <div id="goals-list-container" class="goals-grid">
+                <!-- Dynamic Cards generated by Goal & UIManager -->
+              </div>
+
+              <!-- Empty State -->
+              <div id="goals-empty-state" class="empty-state hidden">
+                <div class="empty-icon">🎯</div>
+                <h3>Belum Ada Target Finansial</h3>
+                <p>Mulai impian Anda dengan mengisi form di sebelah kiri.</p>
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </div>
+
+      <!-- =============================================================== -->
+      <!-- VIEW 2: BUKU TRANSAKSI, SURPLUS, KALENDER & ANALITIK           -->
+      <!-- =============================================================== -->
+      <div id="view-transactions" class="view-section hidden">
+        
+        <!-- 1. Surplus & Cash Flow Overview Header Cards -->
+        <section class="surplus-overview-grid">
+          <!-- Hero Surplus Card -->
+          <div class="card surplus-hero-card">
+            <div>
+              <div class="surplus-header-box">
+                <span class="metric-label">Surplus Finansial Bersih</span>
+                <span id="ledger-surplus-status" class="badge badge-surplus-positive">🟢 SURPLUS BERSIH</span>
+              </div>
+              <div id="ledger-surplus-value" class="surplus-amount text-success">Rp 0</div>
+            </div>
+            <div class="metric-footnote" style="margin-top: 0.5rem;">
+              Net cash flow (Pemasukan riil &minus; Total pengeluaran & alokasi)
+            </div>
+          </div>
+
+          <!-- Total Income Card -->
+          <div class="card metric-card metric-income">
+            <div class="metric-header">
+              <span class="metric-label">Pemasukan Masuk</span>
+              <span class="metric-icon">📈</span>
+            </div>
+            <div class="metric-value" id="ledger-total-income">Rp 0</div>
+            <div class="metric-footnote">Seluruh aliran dana masuk</div>
+          </div>
+
+          <!-- Total Expense Card -->
+          <div class="card metric-card metric-expense">
+            <div class="metric-header">
+              <span class="metric-label">Pengeluaran & Nabung</span>
+              <span class="metric-icon">📉</span>
+            </div>
+            <div class="metric-value" id="ledger-total-expense">Rp 0</div>
+            <div class="metric-footnote">Belanja harian + alokasi goal</div>
+          </div>
+
+          <!-- Saving / Surplus Rate -->
+          <div class="card metric-card metric-goals">
+            <div class="metric-header">
+              <span class="metric-label">Tingkat Surplus</span>
+              <span class="metric-icon">📊</span>
+            </div>
+            <div class="metric-value text-success" id="ledger-saving-rate">0%</div>
+            <div class="metric-footnote">Persentase pendapatan tersisa</div>
+          </div>
+        </section>
+
+        <!-- 2. Date-by-Date Escalation Chart -->
+        <section class="card chart-card">
+          <div class="chart-header">
+            <div>
+              <h2 class="card-title">📈 Grafik Arus Kas & Pemakaian Harian (Date-by-Date)</h2>
+              <p class="card-desc">Pantau fluktuasi pemakaian pengeluaran hari ini dan seterusnya secara runut tanggal</p>
+            </div>
+            <!-- Timeframe Selector -->
+            <div class="timeframe-selector">
+              <button class="timeframe-btn" data-timeframe="today">Hari Ini</button>
+              <button class="timeframe-btn active" data-timeframe="7days">7 Hari Terakhir</button>
+              <button class="timeframe-btn" data-timeframe="30days">30 Hari</button>
+              <button class="timeframe-btn" data-timeframe="all">Semua</button>
+            </div>
+          </div>
+          <div class="chart-wrapper">
+            <div id="chart-empty-placeholder" class="chart-empty-box">
+              <div class="chart-empty-icon">📈</div>
+              <h4>Belum Ada Data Transaksi</h4>
+              <p>Grafik arus kas harian akan tergambar secara otomatis segera setelah Anda mencatat transaksi pemasukan atau pengeluaran.</p>
+            </div>
+            <canvas id="cashflow-chart" style="display: none;"></canvas>
+          </div>
+        </section>
+
+        <!-- 3. View Mode Switcher -->
+        <section class="tx-view-selector-bar">
+          <div class="view-mode-toggle">
+            <button class="view-mode-btn active" id="btn-view-calendar">
+              <span>📅</span> Tampilan Kalender (Google Calendar Style)
+            </button>
+            <button class="view-mode-btn" id="btn-view-table">
+              <span>📑</span> Tampilan Tabel Spreadsheet
+            </button>
+          </div>
+          <button class="btn btn-primary btn-sm" id="btn-open-tx-modal-2">
+            <span>➕</span> Catat Transaksi Baru
+          </button>
+        </section>
+
+        <!-- MODE A: GOOGLE CALENDAR VIEW -->
+        <div id="calendar-section-wrapper" class="calendar-layout-grid">
+          <div class="card calendar-main-card">
+            <div class="cal-header-controls">
+              <div class="cal-nav-buttons">
+                <button class="cal-btn-nav" id="btn-cal-prev">&larr;</button>
+                <button class="cal-btn-nav" id="btn-cal-today">Hari Ini</button>
+                <button class="cal-btn-nav" id="btn-cal-next">&rarr;</button>
+              </div>
+              <h3 class="cal-month-title" id="cal-month-label">Oktober 2026</h3>
+            </div>
+
+            <div class="cal-weekdays-grid">
+              <div>Min</div>
+              <div>Sen</div>
+              <div>Sel</div>
+              <div>Rab</div>
+              <div>Kam</div>
+              <div>Jum</div>
+              <div>Sab</div>
+            </div>
+
+            <div id="calendar-days-grid" class="cal-days-grid"></div>
+          </div>
+
+          <div class="card cal-day-detail-panel">
+            <div class="cal-detail-header">
+              <div>
+                <span class="text-muted" style="font-size: 0.75rem;">Aktivitas Tanggal Terpilih:</span>
+                <h3 class="card-title" id="day-detail-date-label">Hari Ini</h3>
+              </div>
+              <div class="cal-detail-badges">
+                <span class="badge badge-excel-income" id="day-detail-income-badge">+ Rp 0</span>
+                <span class="badge badge-excel-expense" id="day-detail-expense-badge">- Rp 0</span>
+              </div>
+            </div>
+
+            <button class="btn btn-secondary btn-sm btn-block" id="btn-open-tx-modal-cal">
+              <span>➕</span> Catat di Tanggal Ini
+            </button>
+
+            <div id="day-detail-tx-list" class="cal-detail-list"></div>
+
+            <div id="day-detail-empty-state" class="empty-state">
+              <div class="empty-icon" style="font-size: 2rem;">🗓️</div>
+              <h4 style="font-size: 0.95rem;">Tidak Ada Transaksi</h4>
+              <p style="font-size: 0.78rem;">Belum ada catatan transaksi pada tanggal ini.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- MODE B: EXCEL SPREADSHEET TABLE -->
+        <div id="table-section-wrapper" class="card excel-ledger-card hidden">
+          <div class="card-header-flex">
+            <div>
+              <h2 class="card-title">📑 Buku Transaksi Lengkap (Excel Spreadsheet)</h2>
+              <p class="card-desc">Kelola, cari, dan edit seluruh riwayat transaksi yang sedang berjalan</p>
+            </div>
+            <span class="badge" id="excel-count-badge">0 Transaksi</span>
+          </div>
+
+          <div class="excel-toolbar">
+            <div class="excel-filter-controls">
+              <input type="text" id="excel-search-input" class="form-control search-box-input" placeholder="🔍 Cari judul, kategori, atau rekening...">
+              
+              <select id="excel-type-filter" class="form-control select-filter-input">
+                <option value="all">Semua Tipe</option>
+                <option value="income">📈 Pemasukan</option>
+                <option value="expense">📉 Pengeluaran</option>
+                <option value="goal_saving">🎯 Tabungan Goal</option>
+              </select>
+
+              <select id="excel-cat-filter" class="form-control select-filter-input">
+                <option value="all">Semua Kategori</option>
+              </select>
+
+              <select id="excel-acc-filter" class="form-control select-filter-input">
+                <option value="all">Semua Rekening/Metode</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="excel-table-scroll-wrapper">
+            <table class="excel-table">
+              <thead>
+                <tr>
+                  <th style="width: 45px;" class="text-center">No</th>
+                  <th style="width: 135px;">Tanggal & Waktu</th>
+                  <th>Keterangan Transaksi</th>
+                  <th style="width: 125px;">Kategori</th>
+                  <th style="width: 125px;">Rekening / Metode</th>
+                  <th style="width: 130px;">Tipe</th>
+                  <th style="width: 160px;" class="text-right">Nominal (Rp)</th>
+                  <th style="width: 85px;" class="text-center">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="excel-table-body"></tbody>
+              <tfoot>
+                <tr class="excel-foot-row">
+                  <td colspan="6" class="text-right"><strong>Subtotal Difilter:</strong></td>
+                  <td class="text-right font-mono">
+                    <div style="font-size: 0.72rem; color: #34d399;" id="excel-foot-income">+ Rp 0</div>
+                    <div style="font-size: 0.72rem; color: #f87171;" id="excel-foot-expense">- Rp 0</div>
+                    <div style="border-top: 1px solid #334155; margin-top: 2px; padding-top: 2px;" id="excel-foot-surplus">Rp 0</div>
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <div id="excel-empty-state" class="empty-state hidden">
+            <div class="empty-icon">📊</div>
+            <h3>Tidak Ada Transaksi</h3>
+            <p>Tidak ditemukan transaksi yang cocok dengan filter atau kata kunci pencarian.</p>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- =============================================================== -->
+      <!-- VIEW 3: PENGATURAN, KATEGORI, REKENING & EKSPOR/IMPOR CSV        -->
+      <!-- =============================================================== -->
+      <div id="view-settings" class="view-section hidden">
+        <div class="settings-grid">
+          
+          <!-- Box 1: Kategori Kustom -->
+          <div class="card settings-card">
+            <div>
+              <h3 class="card-title">🏷️ Kustomisasi Kategori Transaksi</h3>
+              <p class="card-desc">Tambahkan atau hapus kategori pemakaian sesuai kebutuhan gaya hidup Anda</p>
+            </div>
+
+            <div id="settings-category-list" class="settings-item-list">
+              <!-- Rendered by UIManager.renderSettings() -->
+            </div>
+
+            <form id="form-add-category" class="inline-form">
+              <input type="text" id="new-category-input" class="form-control" placeholder="Contoh: Self-Care, Hewan Peliharaan" required>
+              <button type="submit" class="btn btn-primary btn-sm">
+                <span>➕</span> Tambah
+              </button>
+            </form>
+          </div>
+
+          <!-- Box 2: Rekening & Metode Pembayaran -->
+          <div class="card settings-card">
+            <div>
+              <h3 class="card-title">💳 Rekening & Metode Pembayaran</h3>
+              <p class="card-desc">Kelola dompet dan rekening bank yang Anda gunakan (Tunai, BCA, Mandiri, GoPay, dll.)</p>
+            </div>
+
+            <div id="settings-account-list" class="settings-item-list">
+              <!-- Rendered by UIManager.renderSettings() -->
+            </div>
+
+            <form id="form-add-account" class="inline-form">
+              <input type="text" id="new-account-input" class="form-control" placeholder="Contoh: Bank BCA, OVO, Cash" required>
+              <button type="submit" class="btn btn-primary btn-sm">
+                <span>➕</span> Tambah
+              </button>
+            </form>
+          </div>
+
+          <!-- Box 3: Ekspor & Impor Data (CSV / Excel) -->
+          <div class="card settings-card">
+            <div>
+              <h3 class="card-title">📁 Ekspor & Impor Data (Excel / CSV)</h3>
+              <p class="card-desc">Backup data keuangan Anda atau masukkan data dari spreadsheet eksternal</p>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+              <button type="button" class="btn btn-secondary btn-block" id="btn-export-csv">
+                <span>📥</span> Download Data Transaksi (.CSV / Excel)
+              </button>
+
+              <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 0.5rem 0;">
+
+              <form id="form-import-csv" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <label class="form-label">Upload File CSV Transaksi:</label>
+                <input type="file" id="file-input-csv" class="form-control" accept=".csv,text/csv">
+                <button type="submit" class="btn btn-primary btn-sm">
+                  <span>📤</span> Impor & Gabungkan Transaksi
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <!-- Box 4: Profil Akun & Zona Bahaya -->
+          <div class="card settings-card">
+            <div>
+              <h3 class="card-title">👤 Informasi Akun Aktif</h3>
+              <p class="card-desc">Pengaturan akun yang sedang Anda gunakan</p>
+            </div>
+
+            <div style="background-color: var(--bg-input); padding: 0.75rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+              <div style="font-size: 0.8rem; color: var(--text-secondary);">ID Pengguna Aktif:</div>
+              <div style="font-size: 1.1rem; font-weight: 800; color: #ffffff;" id="settings-user-id-label">-</div>
+            </div>
+
+            <div class="danger-box">
+              <div>
+                <strong style="color: #f87171; font-size: 0.85rem;">Reset Data Akun Ini</strong>
+                <p style="font-size: 0.75rem; color: var(--text-muted);">Menghapus seluruh transaksi dan target impian di akun ini.</p>
+              </div>
+              <button type="button" class="btn btn-danger-outline btn-sm" id="btn-reset-user-data">
+                <span>🗑️</span> Bersihkan Data
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </main>
+
+    <!-- =============================================================== -->
+    <!-- MODALS                                                          -->
+    <!-- =============================================================== -->
+
+    <!-- Modal: Tambah Tabungan ke Goal (Deposit) -->
+    <div id="modal-deposit" class="modal-overlay hidden">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3 class="modal-title">💵 Tambah Tabungan Goal</h3>
+          <button type="button" class="btn-close" id="btn-close-deposit-modal">&times;</button>
+        </div>
+        <form id="form-deposit-goal">
+          <input type="hidden" id="deposit-goal-id">
+          <div class="modal-body">
+            <p class="deposit-target-name">Target: <strong id="deposit-target-title">-</strong></p>
+            <div class="deposit-meta-preview">
+              <div>Terkumpul: <span id="deposit-current-amt">Rp 0</span></div>
+              <div>Target: <span id="deposit-target-amt">Rp 0</span></div>
+              <div>Sisa: <span id="deposit-remaining-amt" class="text-amber">Rp 0</span></div>
+            </div>
+            <div class="form-group" style="margin-top: 1rem;">
+              <label for="deposit-amount" class="form-label">Nominal Alokasi Tabungan *</label>
+              <div class="input-currency-group">
+                <span class="currency-prefix">Rp</span>
+                <input type="text" id="deposit-amount" class="form-control" placeholder="500.000" required>
+              </div>
+            </div>
+            <div class="form-group" style="margin-top: 0.5rem;">
+              <label for="deposit-account" class="form-label">Sumber Rekening / Metode Pembayaran</label>
+              <select id="deposit-account" class="form-control">
+                <!-- Populated dynamically -->
+              </select>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" id="btn-cancel-deposit">Batal</button>
+            <button type="submit" class="btn btn-success">✅ Alokasikan Dana</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal: Catat Transaksi Baru (Pemasukan / Pengeluaran) -->
+    <div id="modal-transaction" class="modal-overlay hidden">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3 class="modal-title">💳 Catat Transaksi Finansial</h3>
+          <button type="button" class="btn-close" id="btn-close-tx-modal">&times;</button>
+        </div>
+        <form id="form-create-tx">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Tipe Transaksi *</label>
+              <div class="tx-type-toggle">
+                <label class="tx-radio-label">
+                  <input type="radio" name="tx-type" value="income" checked>
+                  <span class="tx-badge-radio income">📈 Pemasukan</span>
+                </label>
+                <label class="tx-radio-label">
+                  <input type="radio" name="tx-type" value="expense">
+                  <span class="tx-badge-radio expense">📉 Pengeluaran</span>
+                </label>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="tx-title" class="form-label">Keterangan / Judul *</label>
+              <input type="text" id="tx-title" class="form-control" placeholder="Contoh: Gaji, Makan Siang, Project" required>
+            </div>
+            <div class="form-row">
+              <div class="form-group col-6">
+                <label for="tx-amount" class="form-label">Nominal *</label>
+                <div class="input-currency-group">
+                  <span class="currency-prefix">Rp</span>
+                  <input type="text" id="tx-amount" class="form-control" placeholder="100.000" required>
+                </div>
+              </div>
+              <div class="form-group col-6">
+                <label for="tx-category-select" class="form-label">Kategori</label>
+                <select id="tx-category-select" class="form-control">
+                  <!-- Populated dynamically with on-the-fly add option -->
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group col-6">
+                <label for="tx-account-select" class="form-label">Rekening / Metode</label>
+                <select id="tx-account-select" class="form-control">
+                  <!-- Populated dynamically with on-the-fly add option -->
+                </select>
+              </div>
+              <div class="form-group col-6">
+                <label for="tx-date" class="form-label">Tanggal Transaksi</label>
+                <input type="date" id="tx-date" class="form-control">
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" id="btn-cancel-tx">Batal</button>
+            <button type="submit" class="btn btn-primary">Simpan Transaksi</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal: Edit Transaksi -->
+    <div id="modal-edit-transaction" class="modal-overlay hidden">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3 class="modal-title">✏️ Edit Transaksi</h3>
+          <button type="button" class="btn-close" id="btn-close-edit-tx-modal">&times;</button>
+        </div>
+        <form id="form-edit-tx">
+          <input type="hidden" id="edit-tx-id">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Tipe Transaksi *</label>
+              <div class="tx-type-toggle" style="grid-template-columns: 1fr 1fr 1fr;">
+                <label class="tx-radio-label">
+                  <input type="radio" name="edit-tx-type" value="income">
+                  <span class="tx-badge-radio income">📈 Masuk</span>
+                </label>
+                <label class="tx-radio-label">
+                  <input type="radio" name="edit-tx-type" value="expense">
+                  <span class="tx-badge-radio expense">📉 Keluar</span>
+                </label>
+                <label class="tx-radio-label">
+                  <input type="radio" name="edit-tx-type" value="goal_saving">
+                  <span class="tx-badge-radio goal_saving">🎯 Goal</span>
+                </label>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="edit-tx-title" class="form-label">Keterangan / Judul *</label>
+              <input type="text" id="edit-tx-title" class="form-control" required>
+            </div>
+            <div class="form-row">
+              <div class="form-group col-6">
+                <label for="edit-tx-amount" class="form-label">Nominal *</label>
+                <div class="input-currency-group">
+                  <span class="currency-prefix">Rp</span>
+                  <input type="text" id="edit-tx-amount" class="form-control" required>
+                </div>
+              </div>
+              <div class="form-group col-6">
+                <label for="edit-tx-category" class="form-label">Kategori</label>
+                <select id="edit-tx-category" class="form-control" required></select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group col-6">
+                <label for="edit-tx-account" class="form-label">Rekening / Metode</label>
+                <select id="edit-tx-account" class="form-control" required></select>
+              </div>
+              <div class="form-group col-6">
+                <label for="edit-tx-date" class="form-label">Tanggal Transaksi</label>
+                <input type="date" id="edit-tx-date" class="form-control" required>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" id="btn-cancel-edit-tx">Batal</button>
+            <button type="submit" class="btn btn-primary">Simpan Perubahan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div> <!-- End #view-app -->
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- JavaScript OOP Architecture Scripts -->
+  <script src="static/js/models/Goal.js"></script>
+  <script src="static/js/models/Transaction.js"></script>
+  <script src="static/js/services/StorageManager.js"></script>
+  <script src="static/js/services/AuthManager.js"></script>
+  <script src="static/js/services/BudgetManager.js"></script>
+  <script src="static/js/ui/UIManager.js"></script>
+  <script src="static/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+[Unit]
+Description=Gunicorn WSGI daemon serving SmartBudget Web App
+After=network.target
+
+[Service]
+User=ubuntu
+Group=www-data
+WorkingDirectory=/var/www/budget-app
+Environment="PATH=/var/www/budget-app/venv/bin"
+EnvironmentFile=/etc/budgetapp/budgetapp.env
+# Optimized for 1 vCPU & 1 GiB RAM: 2 workers, bound to localhost port 8000
+ExecStart=/var/www/budget-app/venv/bin/gunicorn --workers 2 --bind 127.0.0.1:8000 --timeout 60 --access-logfile - --error-logfile - app:app
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
